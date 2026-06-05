@@ -5,6 +5,17 @@ import typer
 
 from . import __version__
 
+
+def validate_evm_address(addr: str) -> bool:
+    """Check if string looks like a valid EVM address."""
+    if not addr.startswith("0x") or len(addr) != 42:
+        return False
+    try:
+        int(addr, 16)
+        return True
+    except ValueError:
+        return False
+
 app = typer.Typer(
     name="cryptoshield",
     help="🛡 CryptoShield — All-in-one crypto security toolkit",
@@ -26,6 +37,11 @@ def check(
         report = check_solana_token(address)
         print_solana_token_report(report)
         return
+
+    if not validate_evm_address(address):
+        print(f"❌ Invalid EVM address: {address}")
+        print("   Expected format: 0x followed by 40 hex characters")
+        sys.exit(1)
 
     from .honeypot import check_honeypot, print_honeypot_report
     from .rugpull import analyze_rugpull, print_rugpull_report
@@ -51,6 +67,11 @@ def approvals(
     blocks: int = typer.Option(100000, "-b", "--blocks", help="How many blocks back to scan"),
 ):
     """Scan token approvals for a wallet."""
+    if not validate_evm_address(wallet):
+        print(f"❌ Invalid EVM address: {wallet}")
+        print("   Expected format: 0x followed by 40 hex characters")
+        sys.exit(1)
+
     from .approvals import scan_approvals, print_approval_report
 
     print(f"\n🛡 Scanning approvals for {wallet[:10]}... on {chain}")
@@ -69,6 +90,11 @@ def rugpull(
         report = check_solana_token(address)
         print_solana_token_report(report)
         return
+
+    if not validate_evm_address(address):
+        print(f"❌ Invalid EVM address: {address}")
+        print("   Expected format: 0x followed by 40 hex characters")
+        sys.exit(1)
 
     from .rugpull import analyze_rugpull, print_rugpull_report
 
