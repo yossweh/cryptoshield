@@ -24,18 +24,20 @@ def analyze_rugpull(address: str, chain: str = "eth") -> dict:
         "risk_level": "UNKNOWN",
     }
 
-    contract = w3.eth.contract(address=addr, abi=ERC20_ABI)
-
-    # 1. Check if contract is verified (has code)
-    code = w3.eth.get_code(addr)
-    if code == b"" or code == b"0x":
-        report["checks"].append({"name": "Contract Code", "status": "FAIL", "detail": "No contract code — not a contract"})
-        report["score"] += 50
-    else:
-        report["checks"].append({"name": "Contract Code", "status": "OK", "detail": f"{len(code)} bytes deployed"})
+    # 1. Check if contract has code
+    try:
+        code = w3.eth.get_code(addr)
+        if code == b"" or code == b"0x":
+            report["checks"].append({"name": "Contract Code", "status": "FAIL", "detail": "No contract code — not a contract"})
+            report["score"] += 50
+        else:
+            report["checks"].append({"name": "Contract Code", "status": "OK", "detail": f"{len(code)} bytes deployed"})
+    except Exception as e:
+        report["checks"].append({"name": "Contract Code", "status": "INFO", "detail": f"Could not check: {str(e)[:50]}"})
 
     # 2. Check if owner is renounced
     try:
+        contract = w3.eth.contract(address=addr, abi=ERC20_ABI)
         owner = contract.functions.owner().call()
         zero = "0x0000000000000000000000000000000000000000"
         dead = "0x000000000000000000000000000000000000dEaD"
@@ -47,8 +49,9 @@ def analyze_rugpull(address: str, chain: str = "eth") -> dict:
     except Exception:
         report["checks"].append({"name": "Ownership", "status": "INFO", "detail": "No owner function (could be good or bad)"})
 
-    # 3. Check total supply concentration
+    # 3. Check total supply
     try:
+        contract = w3.eth.contract(address=addr, abi=ERC20_ABI)
         total_supply = contract.functions.totalSupply().call()
         if total_supply > 0:
             report["checks"].append({"name": "Total Supply", "status": "INFO", "detail": f"{total_supply:,}"})
@@ -56,46 +59,50 @@ def analyze_rugpull(address: str, chain: str = "eth") -> dict:
             report["checks"].append({"name": "Total Supply", "status": "FAIL", "detail": "Zero supply"})
             report["score"] += 20
     except Exception:
-        report["checks"].append({"name": "Total Supply", "status": "FAIL", "detail": "Cannot read supply"})
+        report["checks"].append({"name": "Total Supply", "status": "INFO", "detail": "Cannot read supply"})
 
-    # 4. Check liquidity (look for LP tokens)
-    # This is a simplified check — real check would scan DEX pairs
+    # 4. Liquidity hint
     report["checks"].append({"name": "Liquidity", "status": "INFO", "detail": "Check manually on DEX Screener"})
 
-    # 5. Get GoPlus data for additional checks
-    goplus = check_honeypot(addr, chain)
-    if "error" not in goplus:
-        if goplus.get("is_honeypot"):
-            report["score"] += 40
-            report["checks"].append({"name": "Honeypot", "status": "FAIL", "detail": "Token is a honeypot"})
+    # 5. GoPlus data (honeypot, source code, proxy, etc.)
+    try:
+        goplus = check_honeypot(addr, chain)
+        if "error" not in goplus:
+            if goplus.get("is_honeypot"):
+                report["score"] += 40
+                report["checks"].append({"name": "Honeypot", "status": "FAIL", "detail": "Token is a honeypot"})
+            else:
+                report["checks"].append({"name": "Honeypot", "status": "OK", "detail": "Not a honeypot"})
+
+            if not goplus.get("is_open_source"):
+                report["score"] += 15
+                report["checks"].append({"name": "Source Code", "status": "FAIL", "detail": "Not verified"})
+            else:
+                report["checks"].append({"name": "Source Code", "status": "OK", "detail": "Verified on explorer"})
+
+            if goplus.get("is_proxy"):
+                report["score"] += 5
+                report["checks"].append({"name": "Proxy", "status": "WARN", "detail": "Proxy contract — logic can change"})
+
+            if goplus.get("selfdestruct"):
+                report["score"] += 15
+                report["checks"].append({"name": "Self-Destruct", "status": "FAIL", "detail": "Has selfdestruct function"})
+
+            if goplus.get("hidden_owner"):
+                report["score"] += 10
+                report["checks"].append({"name": "Hidden Owner", "status": "FAIL", "detail": "Hidden owner detected"})
+
+            if goplus.get("owner_can_mint"):
+                report["score"] += 10
+                report["checks"].append({"name": "Mintable", "status": "WARN", "detail": "Owner can mint new tokens"})
+
+            holder_count = goplus.get("holder_count", 0)
+            if holder_count:
+                report["checks"].append({"name": "Holders", "status": "INFO", "detail": f"{holder_count:,} holders"})
         else:
-            report["checks"].append({"name": "Honeypot", "status": "OK", "detail": "Not a honeypot"})
-
-        if not goplus.get("is_open_source"):
-            report["score"] += 15
-            report["checks"].append({"name": "Source Code", "status": "FAIL", "detail": "Not verified"})
-        else:
-            report["checks"].append({"name": "Source Code", "status": "OK", "detail": "Verified on explorer"})
-
-        if goplus.get("is_proxy"):
-            report["score"] += 5
-            report["checks"].append({"name": "Proxy", "status": "WARN", "detail": "Proxy contract — logic can change"})
-
-        if goplus.get("selfdestruct"):
-            report["score"] += 15
-            report["checks"].append({"name": "Self-Destruct", "status": "FAIL", "detail": "Has selfdestruct function"})
-
-        if goplus.get("hidden_owner"):
-            report["score"] += 10
-            report["checks"].append({"name": "Hidden Owner", "status": "FAIL", "detail": "Hidden owner detected"})
-
-        if goplus.get("owner_can_mint"):
-            report["score"] += 10
-            report["checks"].append({"name": "Mintable", "status": "WARN", "detail": "Owner can mint new tokens"})
-
-        holder_count = goplus.get("holder_count", 0)
-        if holder_count:
-            report["checks"].append({"name": "Holders", "status": "INFO", "detail": f"{holder_count:,} holders"})
+            report["checks"].append({"name": "GoPlus", "status": "INFO", "detail": f"API error: {goplus['error'][:50]}"})
+    except Exception as e:
+        report["checks"].append({"name": "GoPlus", "status": "INFO", "detail": f"Could not check: {str(e)[:50]}"})
 
     # Cap score at 100
     report["score"] = min(report["score"], 100)

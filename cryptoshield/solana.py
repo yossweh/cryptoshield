@@ -1,6 +1,6 @@
 """Solana token security checker.
 
-Uses Solana RPC + Jupiter API for token data.
+Uses Solana RPC + Solana Token Registry for token data.
 """
 
 import requests
@@ -8,9 +8,36 @@ from .db import cache_get, cache_set
 from .utils import print_header, print_ok, print_warn, print_fail, print_info
 
 SOLANA_RPC = "https://api.mainnet-beta.solana.com"
-JUPITER_TOKEN_API = "https://tokens.jup.ag/token/{mint}"
-JUPITER_LIST = "https://tokens.jup.ag/strict"
-BIRDEYE_TOKEN = "https://public-api.birdeye.so/defi/token_overview?address={mint}"
+TOKEN_REGISTRY_URL = "https://raw.githubusercontent.com/solana-labs/token-list/main/src/tokens/solana.tokenlist.json"
+
+# Cache the token registry
+_registry_cache = None
+
+
+def _get_token_registry() -> dict:
+    """Get the Solana token registry (cached)."""
+    global _registry_cache
+    if _registry_cache is not None:
+        return _registry_cache
+
+    cached = cache_get("solana_token_registry")
+    if cached:
+        _registry_cache = cached
+        return cached
+
+    try:
+        r = requests.get(TOKEN_REGISTRY_URL, timeout=30)
+        r.raise_for_status()
+        data = r.json()
+        tokens = {}
+        for t in data.get("tokens", []):
+            tokens[t["address"]] = t
+        _registry_cache = tokens
+        cache_set("solana_token_registry", tokens, ttl=86400)  # Cache 24h
+        return tokens
+    except Exception:
+        _registry_cache = {}
+        return {}
 
 
 def check_solana_token(mint: str) -> dict:
@@ -30,35 +57,23 @@ def check_solana_token(mint: str) -> dict:
         "holder_count": 0,
         "total_supply": 0,
         "decimals": 0,
-        "is_on_jupiter": False,
+        "is_known": False,
         "freeze_authority": None,
         "mint_authority": None,
-        "is_mutable": True,
+        "tags": [],
     }
 
-    # 1. Get token metadata from Jupiter
-    try:
-        r = requests.get(JUPITER_TOKEN_API.format(mint=mint), timeout=10)
-        if r.status_code == 200:
-            data = r.json()
-            report["token_name"] = data.get("name", "Unknown")
-            report["token_symbol"] = data.get("symbol", "?")
-            report["decimals"] = data.get("decimals", 0)
-            report["is_on_jupiter"] = True
-            report["daily_volume"] = data.get("daily_volume", 0)
-    except Exception:
-        pass
+    # 1. Get token info from registry
+    registry = _get_token_registry()
+    if mint in registry:
+        token_info = registry[mint]
+        report["token_name"] = token_info.get("name", "Unknown")
+        report["token_symbol"] = token_info.get("symbol", "?")
+        report["decimals"] = token_info.get("decimals", 0)
+        report["is_known"] = True
+        report["tags"] = token_info.get("tags", [])
 
-    # 2. Check if on Jupiter strict list (vetted tokens)
-    try:
-        r = requests.get(JUPITER_LIST, timeout=10)
-        if r.status_code == 200:
-            strict_tokens = {t["address"] for t in r.json()}
-            report["is_on_jupiter_strict"] = mint in strict_tokens
-    except Exception:
-        report["is_on_jupiter_strict"] = False
-
-    # 3. Get on-chain token info via RPC
+    # 2. Get on-chain token info via RPC
     try:
         payload = {
             "jsonrpc": "2.0",
@@ -66,7 +81,7 @@ def check_solana_token(mint: str) -> dict:
             "method": "getAccountInfo",
             "params": [mint, {"encoding": "jsonParsed"}],
         }
-        r = requests.post(SOLANA_RPC, json=payload, timeout=10)
+        r = requests.post(SOLANA_RPC, json=payload, timeout=15)
         data = r.json()
         account = data.get("result", {}).get("value", {})
 
@@ -76,26 +91,30 @@ def check_solana_token(mint: str) -> dict:
 
             report["mint_authority"] = info.get("mintAuthority")
             report["freeze_authority"] = info.get("freezeAuthority")
-            report["is_mutable"] = info.get("isInitialized", True)
-            report["total_supply"] = int(info.get("supply", "0"))
+            supply_raw = int(info.get("supply", "0"))
+            report["total_supply"] = supply_raw
             report["decimals"] = info.get("decimals", report["decimals"])
-    except Exception:
-        pass
 
-    # 4. Get holder count from Birdeye (optional, may fail without API key)
+            # Calculate human-readable supply
+            if report["decimals"] > 0:
+                report["total_supply_ui"] = supply_raw / (10 ** report["decimals"])
+            else:
+                report["total_supply_ui"] = supply_raw
+    except Exception as e:
+        report["rpc_error"] = str(e)[:50]
+
+    # 3. Get holder count from Solana RPC (approximate)
     try:
-        headers = {"X-API-KEY": "public"}
-        r = requests.get(
-            BIRDEYE_TOKEN.format(mint=mint),
-            headers=headers,
-            timeout=10,
-        )
-        if r.status_code == 200:
-            birddata = r.json().get("data", {})
-            report["holder_count"] = birddata.get("holder", 0)
-            report["daily_volume"] = birddata.get("v24hUSD", report.get("daily_volume", 0))
-            report["market_cap"] = birddata.get("mc", 0)
-            report["price"] = birddata.get("price", 0)
+        payload = {
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "getTokenLargestAccounts",
+            "params": [mint],
+        }
+        r = requests.post(SOLANA_RPC, json=payload, timeout=15)
+        data = r.json()
+        largest = data.get("result", {}).get("value", [])
+        report["top_holders"] = len(largest)
     except Exception:
         pass
 
@@ -113,34 +132,23 @@ def check_solana_token(mint: str) -> dict:
         risks.append("MINT AUTHORITY — unlimited supply, issuer can mint more")
         score += 15
 
-    # Not on Jupiter
-    if not report["is_on_jupiter"]:
-        risks.append("NOT ON JUPITER — unvetted token, high risk")
+    # Not in registry
+    if not report["is_known"]:
+        risks.append("NOT IN TOKEN REGISTRY — unvetted token, high risk")
         score += 15
 
-    # Not on Jupiter strict list
-    if not report.get("is_on_jupiter_strict"):
-        risks.append("NOT ON JUPITER STRICT LIST — not officially vetted")
-        score += 5
+    # Stablecoin tag (positive)
+    if "stablecoin" in report.get("tags", []):
+        score -= 10  # Lower risk for known stablecoins
 
-    # Low holder count
-    if report["holder_count"] > 0 and report["holder_count"] < 100:
-        risks.append(f"LOW HOLDER COUNT — only {report['holder_count']} holders")
-        score += 15
-    elif report["holder_count"] > 0 and report["holder_count"] < 1000:
-        risks.append(f"SMALL HOLDER COUNT — {report['holder_count']} holders")
-        score += 5
+    # Native SOL wrapped (positive)
+    if "native" in report.get("tags", []):
+        score -= 5
 
-    # Low volume
-    vol = report.get("daily_volume", 0)
-    if vol > 0 and vol < 1000:
-        risks.append(f"LOW VOLUME — ${vol:,.0f} in 24h")
-        score += 10
-
-    report["risk_score"] = min(score, 100)
-    if score <= 20:
+    report["risk_score"] = max(min(score, 100), 0)
+    if report["risk_score"] <= 20:
         report["risk_level"] = "LOW"
-    elif score <= 50:
+    elif report["risk_score"] <= 50:
         report["risk_level"] = "MEDIUM"
     else:
         report["risk_level"] = "HIGH"
@@ -165,7 +173,7 @@ def check_solana_wallet(wallet: str) -> dict:
             "method": "getBalance",
             "params": [wallet],
         }
-        r = requests.post(SOLANA_RPC, json=payload, timeout=10)
+        r = requests.post(SOLANA_RPC, json=payload, timeout=15)
         data = r.json()
         report["sol_balance"] = data.get("result", {}).get("value", 0) / 1e9
     except Exception:
@@ -183,16 +191,30 @@ def check_solana_wallet(wallet: str) -> dict:
                 {"encoding": "jsonParsed"},
             ],
         }
-        r = requests.post(SOLANA_RPC, json=payload, timeout=10)
+        r = requests.post(SOLANA_RPC, json=payload, timeout=15)
         data = r.json()
         accounts = data.get("result", {}).get("value", [])
+
+        registry = _get_token_registry()
 
         for acc in accounts:
             info = acc["account"]["data"]["parsed"]["info"]
             token_amount = info.get("tokenAmount", {})
+            mint = info.get("mint", "")
+            balance = token_amount.get("uiAmount", 0)
+
+            # Get token name from registry
+            name = "Unknown"
+            symbol = mint[:6]
+            if mint in registry:
+                name = registry[mint].get("name", "Unknown")
+                symbol = registry[mint].get("symbol", symbol)
+
             report["tokens"].append({
-                "mint": info.get("mint", ""),
-                "balance": token_amount.get("uiAmount", 0),
+                "mint": mint,
+                "name": name,
+                "symbol": symbol,
+                "balance": balance,
                 "decimals": token_amount.get("decimals", 0),
             })
     except Exception:
@@ -207,15 +229,14 @@ def print_solana_token_report(report: dict):
     symbol = report["token_symbol"]
     print_header(f"SOLANA TOKEN CHECK — {name} ({symbol})")
 
-    # Jupiter status
-    if report["is_on_jupiter"]:
-        print_ok("Listed on Jupiter")
-        if report.get("is_on_jupiter_strict"):
-            print_ok("On Jupiter Strict List (vetted)")
-        else:
-            print_warn("NOT on Jupiter Strict List")
+    # Known status
+    if report.get("is_known"):
+        print_ok("Listed in Solana Token Registry")
+        tags = report.get("tags", [])
+        if tags:
+            print_info(f"Tags: {', '.join(tags)}")
     else:
-        print_fail("Not listed on Jupiter — unvetted token")
+        print_warn("NOT in Token Registry — unvetted token")
 
     # Freeze authority
     if report["freeze_authority"]:
@@ -229,24 +250,13 @@ def print_solana_token_report(report: dict):
     else:
         print_ok("Mint Authority: None (fixed supply)")
 
-    # Holders
-    if report["holder_count"]:
-        if report["holder_count"] < 100:
-            print_fail(f"Holders: {report['holder_count']:,}")
-        elif report["holder_count"] < 1000:
-            print_warn(f"Holders: {report['holder_count']:,}")
-        else:
-            print_ok(f"Holders: {report['holder_count']:,}")
+    # Supply
+    if report.get("total_supply_ui"):
+        print_info(f"Total Supply: {report['total_supply_ui']:,.2f}")
 
-    # Volume
-    vol = report.get("daily_volume", 0)
-    if vol:
-        print_info(f"24h Volume: ${vol:,.0f}")
-
-    # Market cap
-    mc = report.get("market_cap", 0)
-    if mc:
-        print_info(f"Market Cap: ${mc:,.0f}")
+    # Top holders
+    if report.get("top_holders"):
+        print_info(f"Top holders: {report['top_holders']} largest accounts")
 
     # Risk score
     score = report["risk_score"]

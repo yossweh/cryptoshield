@@ -6,16 +6,47 @@ from typing import Optional
 import requests
 from web3 import Web3
 
-# Default RPC endpoints (public, no key needed)
+# Default RPC endpoints (public, no key needed) — with fallbacks
 RPC_ENDPOINTS = {
-    "eth": "https://eth.llamarpc.com",
-    "bsc": "https://bsc-dataseed1.binance.org",
-    "polygon": "https://polygon-rpc.com",
-    "arbitrum": "https://arb1.arbitrum.io/rpc",
-    "optimism": "https://mainnet.optimism.io",
-    "base": "https://mainnet.base.org",
-    "avalanche": "https://api.avax.network/ext/bc/C/rpc",
-    "fantom": "https://rpc.ftm.tools",
+    "eth": [
+        "https://rpc.ankr.com/eth",
+        "https://eth.llamarpc.com",
+        "https://eth.drpc.org",
+        "https://cloudflare-eth.com",
+    ],
+    "bsc": [
+        "https://bsc-dataseed1.binance.org",
+        "https://bsc-dataseed2.binance.org",
+        "https://rpc.ankr.com/bsc",
+    ],
+    "polygon": [
+        "https://polygon-rpc.com",
+        "https://rpc.ankr.com/polygon",
+        "https://polygon.drpc.org",
+    ],
+    "arbitrum": [
+        "https://arb1.arbitrum.io/rpc",
+        "https://rpc.ankr.com/arbitrum",
+        "https://arbitrum.drpc.org",
+    ],
+    "optimism": [
+        "https://mainnet.optimism.io",
+        "https://rpc.ankr.com/optimism",
+        "https://optimism.drpc.org",
+    ],
+    "base": [
+        "https://mainnet.base.org",
+        "https://rpc.ankr.com/base",
+        "https://base.drpc.org",
+    ],
+    "avalanche": [
+        "https://api.avax.network/ext/bc/C/rpc",
+        "https://rpc.ankr.com/avalanche",
+    ],
+    "fantom": [
+        "https://rpc.ftm.tools",
+        "https://rpc.ankr.com/fantom",
+    ],
 }
 
 CHAIN_IDS = {
@@ -95,31 +126,7 @@ ERC20_ABI = [
     },
 ]
 
-# Transfer event ABI
-TRANSFER_EVENT = {
-    "anonymous": False,
-    "inputs": [
-        {"indexed": True, "name": "from", "type": "address"},
-        {"indexed": True, "name": "to", "type": "address"},
-        {"indexed": False, "name": "value", "type": "uint256"},
-    ],
-    "name": "Transfer",
-    "type": "event",
-}
-
-# Approval event ABI
-APPROVAL_EVENT = {
-    "anonymous": False,
-    "inputs": [
-        {"indexed": True, "name": "owner", "type": "address"},
-        {"indexed": True, "name": "spender", "type": "address"},
-        {"indexed": False, "name": "value", "type": "uint256"},
-    ],
-    "name": "Approval",
-    "type": "event",
-}
-
-# Well-known addresses to label
+# Known addresses to label
 KNOWN_ADDRESSES = {
     "0x7a250d5630b4cf539739df2c5dacb4c659f2488d": "Uniswap V2 Router",
     "0xe592427a0aece92de3edee1f18e0157c05861564": "Uniswap V3 Router",
@@ -140,11 +147,23 @@ KNOWN_ADDRESSES = {
 
 
 def get_web3(chain: str = "eth") -> Web3:
-    rpc = RPC_ENDPOINTS.get(chain)
-    if not rpc:
+    """Get Web3 instance with automatic RPC fallback."""
+    endpoints = RPC_ENDPOINTS.get(chain)
+    if not endpoints:
         print(f"Unsupported chain: {chain}")
         sys.exit(1)
-    return Web3(Web3.HTTPProvider(rpc))
+
+    for rpc in endpoints:
+        try:
+            w3 = Web3(Web3.HTTPProvider(rpc, request_kwargs={"timeout": 10}))
+            # Test connection
+            w3.eth.block_number
+            return w3
+        except Exception:
+            continue
+
+    print(f"All RPC endpoints failed for {chain}")
+    sys.exit(1)
 
 
 def is_valid_address(addr: str) -> bool:
