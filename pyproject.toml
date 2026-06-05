@@ -1,0 +1,36 @@
+[build-system]
+requires = ["setuptools>=68.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "cryptoshield"
+version = "0.1.0"
+description = "All-in-one crypto security toolkit — honeypot, approvals, rugpull, phishing"
+readme = "README.md"
+license = {text = "MIT"}
+requires-python = ">=3.9"
+authors = [
+    {name = "yossweh", email = "cilokcilok15@gmail.com"},
+]
+keywords = ["crypto", "security", "honeypot", "rugpull", "web3", "defi", "approval"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Topic :: Security",
+    "Topic :: Software Development :: Libraries",
+]
+dependencies = [
+    "typer>=0.9.0",
+    "web3>=6.0.0",
+    "requests>=2.28.0",
+]
+
+[project.scripts]
+cryptoshield = "cryptoshield.cli:main"
+
+[project.urls]
+Homepage = "https://github.com/yossweh/cryptoshield"
+Repository = "https://github.com/yossweh/cryptoshield"
+Issues = "https://github.com/yossweh/cryptoshield/issues"
