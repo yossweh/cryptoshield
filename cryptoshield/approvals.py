@@ -5,7 +5,7 @@ Scans on-chain Approval events to find all active token approvals.
 
 from web3 import Web3
 from .utils import (
-    get_web3, checksum, label_address, ERC20_ABI, APPROVAL_EVENT,
+    get_web3, checksum, label_address, ERC20_ABI,
     KNOWN_ADDRESSES, print_header, print_ok, print_warn, print_fail, print_info,
 )
 
