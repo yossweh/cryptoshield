@@ -6,6 +6,27 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 [![PyPI](https://img.shields.io/pypi/v/cryptoshield.svg)](https://pypi.org/project/cryptoshield/)
 
+## Why CryptoShield?
+
+Every day, people lose money to:
+- **Honeypot tokens** — you can buy but can't sell. Your funds are trapped.
+- **Unlimited token approvals** — you gave a random contract permission to drain your wallet. Months later, they do.
+- **Rugpulls** — team dumps all tokens, liquidity vanishes, price goes to zero.
+- **Phishing sites** — fake airdrop pages that look like Uniswap but steal your seed phrase.
+
+CryptoShield combines all these checks into **one CLI tool**. No API keys needed. No accounts. No BS. Just run a command and get a clear report.
+
+```
+# Before you ape into that token:
+cryptoshield check 0xToken
+
+# Before you connect your wallet to some random site:
+cryptoshield check-url suspicious-site.com
+
+# Check if your wallet has dangerous approvals:
+cryptoshield approvals 0xYourWallet
+```
+
 ## Features
 
 - **🍯 Honeypot Detection** — Can you sell? Hidden taxes? Mint function? Check before you buy.
@@ -94,6 +115,13 @@ cryptoshield batch wallets.txt --mode approvals --chain bsc
   ✅ Mint Authority: None (fixed supply)
   ✅ Holders: 5,432
   ✅ Risk Score: 0/100 — LOW RISK
+
+📋 APPROVAL AUDIT — 0x47ac...8188
+  ❌ USDT → UNLIMITED to 0xUnkn...abcd
+         ⚡ RECOMMEND: revoke immediately
+  ⚠️  WETH → unlimited to Uniswap V2 Router
+         Known protocol — consider reducing allowance
+  ✅ DAI → 500.00 to Uniswap V3 Router
 ```
 
 ## Supported Chains
@@ -112,14 +140,17 @@ cryptoshield batch wallets.txt --mode approvals --chain bsc
 
 > 🔜 = Coming soon. SPL token delegation uses a different model than ERC-20 approvals.
 
-## Data Sources
+## How It Works
 
-- **GoPlus Security API** — Honeypot detection, token security analysis (free, no key)
-- **Jupiter API** — Solana token data, strict list
-- **Birdeye API** — Solana holder count, volume
-- **On-chain data** — Approval events, contract code, ownership (direct RPC)
-- **Heuristics** — URL pattern matching, domain analysis, typosquatting detection
-- **Community scam database** — 60+ known phishing domains
+| Check | Data Source | Key Needed? |
+|-------|-----------|-------------|
+| Honeypot | GoPlus Security API | No |
+| Approvals | On-chain events (RPC) | No |
+| Rugpull | GoPlus + on-chain heuristics | No |
+| Phishing | Pattern matching + 60+ known domains | No |
+| Solana tokens | Jupiter + Birdeye + Solana RPC | No |
+
+Everything runs with public APIs and free RPC endpoints. No signups. No API keys. No tracking.
 
 ## Contributing
 
