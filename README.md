@@ -108,7 +108,9 @@ cryptoshield batch wallets.txt --mode approvals --chain bsc
 | Base | ✅ | ✅ | ✅ |
 | Avalanche | ✅ | ✅ | ✅ |
 | Fantom | ✅ | ✅ | ✅ |
-| Solana | ✅ | — | ✅ |
+| Solana | ✅ | 🔜 | ✅ |
+
+> 🔜 = Coming soon. SPL token delegation uses a different model than ERC-20 approvals.
 
 ## Data Sources
 
@@ -125,6 +127,7 @@ PRs welcome! Especially:
 
 - More scam domains / phishing patterns
 - More chain support (TON, Sui, Aptos)
+- SPL token delegation scanner (Solana approvals)
 - Better rugpull heuristics
 - UI improvements
 
