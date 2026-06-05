@@ -68,6 +68,59 @@ LEGIT_DOMAINS = {
     "gemini.com",
     "bitstamp.net",
     "crypto.com",
+    "eigenlayer.xyz",
+    "stargate.finance",
+    "jumper.exchange",
+    "orbiter.finance",
+    "rhino.fi",
+    "synapseprotocol.com",
+    "multichain.org",
+    "celer.network",
+    "debridge.finance",
+    "li.fi",
+    "socket.tech",
+    "bungee.exchange",
+    "chainlist.org",
+    "revoke.cash",
+    "debank.com",
+    "zapper.fi",
+    "zerion.io",
+    "matcha.xyz",
+    "slingshot.finance",
+    "kwenta.io",
+    "velodrome.finance",
+    "aerodrome.finance",
+    "camelot.exchange",
+    "traderjoexyz.com",
+    "spookyswap.finance",
+    "spiritswap.finance",
+    "beets.fi",
+    "balancer.fi",
+    "frax.finance",
+    "convexfinance.com",
+    "yearn.finance",
+    "synthetix.io",
+    "perp.com",
+    "gains.trade",
+    "mux.network",
+    "aevo.xyz",
+    "premia.finance",
+    "lyra.finance",
+    "hegic.co",
+    "ribbon.finance",
+    "opyn.co",
+    "squeeth.com",
+    "aztec.network",
+    "scroll.io",
+    "linea.build",
+    "mantle.xyz",
+    "manta.network",
+    "connext.network",
+    "across.to",
+    "hop.exchange",
+    "satellite.axelar.network",
+    "squidrouter.com",
+    "chainge.finance",
 }
 
 # Suspicious keywords in URLs
@@ -92,14 +145,100 @@ SCAM_PATTERNS = [
     r"suspended",
     r"limited.*time",
     r"act.*now",
+    r"urgent",
+    r"migration",
+    r"migrate",
+    r"unlock",
+    r"activate",
+    r"confirm.*seed",
+    r"seed.*phrase",
+    r"private.*key",
+    r"recovery",
+    r"support.*chat",
+    r"live.*chat",
+    r"help.*desk",
+    r"fix.*wallet",
+    r"repair",
+    r"rectify",
+    r"resolve.*issue",
+    r"pending.*transaction",
+    r"failed.*transaction",
+    r"stuck.*funds",
+    r"frozen.*account",
+    r"kyc.*verify",
+    r"identity.*verify",
+    r"document.*upload",
+    r"passport",
+    r"driver.*license",
+    r"social.*security",
+    r"tax.*refund",
+    r"gas.*fee.*refund",
+    r"rebate",
+    r"cashback",
+    r"double.*your",
+    r"multiply",
+    r"investment.*opportunity",
+    r"guaranteed.*profit",
+    r"risk.*free",
+    r"passive.*income",
+    r"financial.*freedom",
+    r"early.*access",
+    r"beta.*test",
+    r"exclusive.*offer",
+    r"limited.*supply",
+    r"last.*chance",
+    r"final.*notice",
+    r"action.*required",
+    r"immediate.*attention",
 ]
 
 # TLDs commonly used by scammers
 SUSPICIOUS_TLDS = [
     ".xyz", ".top", ".club", ".buzz", ".click", ".link",
     ".site", ".online", ".icu", ".work", ".fit", ".monster",
-    ".cfd", ".sbs", ".surf", ".rest",
+    ".cfd", ".sbs", ".surf", ".rest", ".cam", ".hair",
+    ".mom", ".lol", ".bond", ".cyou", ".uno", ".sarl",
+    ".mov", ".zip", ".py", ".sh", ".tk", ".ml", ".ga", ".cf", ".gq",
 ]
+
+# Known scam domains (community-reported)
+KNOWN_SCAM_DOMAINS = {
+    "uniswap-airdrop.com",
+    "metamask-airdrop.com",
+    "metamask-sync.com",
+    "metamask-restore.com",
+    "metamask-verify.com",
+    "metamask-update.com",
+    "phantom-airdrop.com",
+    "phantom-sync.com",
+    "phantom-restore.com",
+    "arbitrum-airdrop.com",
+    "arbitrum-claim.com",
+    "optimism-airdrop.com",
+    "starknet-airdrop.com",
+    "zksync-airdrop.com",
+    "layerzero-airdrop.com",
+    "eigenlayer-airdrop.com",
+    "jito-airdrop.com",
+    "jupiter-airdrop.com",
+    "blur-airdrop.com",
+    "pudgypenguins-airdrop.com",
+    "apecoin-claim.com",
+    "uniswapv3.com",
+    "app-uniswap.org",
+    "uniswap-app.org",
+    "metamask-download.com",
+    "metamask-extension.com",
+    "metamask-io.com",
+    "metamask-wallet.com",
+    "pancakeswap-finance.com",
+    "aave-protocol.com",
+    "opensea-io.com",
+    "opensea-nft.com",
+    "coinbase-airdrop.com",
+    "binance-airdrop.com",
+    "crypto-com-airdrop.com",
+}
 
 
 def check_url(url: str) -> dict:
@@ -119,12 +258,24 @@ def check_url(url: str) -> dict:
         "path": parsed.path,
         "is_legit": False,
         "is_suspicious": False,
+        "is_known_scam": False,
         "indicators": [],
         "risk_score": 0,
     }
 
-    # 1. Check if it's a known legitimate domain
+    # 0. Check known scam domains FIRST
     base_domain = _get_base_domain(domain)
+    if domain in KNOWN_SCAM_DOMAINS or base_domain in KNOWN_SCAM_DOMAINS:
+        report["is_known_scam"] = True
+        report["is_suspicious"] = True
+        report["indicators"].append({
+            "type": "FAIL",
+            "detail": f"KNOWN SCAM DOMAIN — {domain} is in scam database"
+        })
+        report["risk_score"] = 90
+        return report
+
+    # 1. Check if it's a known legitimate domain
     if base_domain in LEGIT_DOMAINS or domain in LEGIT_DOMAINS:
         report["is_legit"] = True
         report["indicators"].append({"type": "OK", "detail": f"Known legitimate domain: {base_domain}"})
@@ -147,14 +298,25 @@ def check_url(url: str) -> dict:
 
     # 3. Check for scam patterns in URL
     full_url = url.lower()
+    matched_patterns = []
     for pattern in SCAM_PATTERNS:
         if re.search(pattern, full_url):
-            report["is_suspicious"] = True
+            matched_patterns.append(pattern)
+
+    if matched_patterns:
+        report["is_suspicious"] = True
+        if len(matched_patterns) == 1:
             report["indicators"].append({
                 "type": "WARN",
-                "detail": f"Suspicious pattern: '{pattern}' in URL"
+                "detail": f"Suspicious pattern: '{matched_patterns[0]}' in URL"
             })
             report["risk_score"] += 10
+        else:
+            report["indicators"].append({
+                "type": "FAIL",
+                "detail": f"Multiple suspicious patterns ({len(matched_patterns)}): {', '.join(matched_patterns[:3])}"
+            })
+            report["risk_score"] += 15 * len(matched_patterns)
 
     # 4. Check TLD
     tld = "." + domain.split(".")[-1]
@@ -209,6 +371,21 @@ def check_url(url: str) -> dict:
         })
         report["risk_score"] += 5
 
+    # 10. Check for brand names in non-brand domains
+    brand_domains = ["uniswap", "metamask", "phantom", "aave", "opensea", "blur",
+                     "pancakeswap", "sushi", "compound", "lido", "curve", "binance",
+                     "coinbase", "kraken", "okx", "bybit", "arbitrum", "optimism",
+                     "zksync", "starknet", "eigenlayer", "jito", "jupiter", "raydium"]
+    for brand in brand_domains:
+        if brand in domain and base_domain not in LEGIT_DOMAINS:
+            report["is_suspicious"] = True
+            report["indicators"].append({
+                "type": "FAIL",
+                "detail": f"Brand name '{brand}' in non-official domain"
+            })
+            report["risk_score"] += 25
+            break
+
     # Cap score
     report["risk_score"] = min(report["risk_score"], 100)
 
@@ -221,6 +398,12 @@ def check_url(url: str) -> dict:
 def print_phishing_report(report: dict):
     """Pretty-print URL check results."""
     print_header(f"PHISHING CHECK — {report['domain']}")
+
+    if report.get("is_known_scam"):
+        print_fail("🚨 KNOWN SCAM DOMAIN — DO NOT VISIT")
+        for ind in report["indicators"]:
+            print_fail(ind["detail"])
+        return
 
     if report["is_legit"]:
         print_ok("Known legitimate domain")

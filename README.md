@@ -4,13 +4,15 @@
 
 [![Python 3.9+](https://img.shields.io/badge/python-3.9+-blue.svg)](https://python.org)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
+[![PyPI](https://img.shields.io/pypi/v/cryptoshield.svg)](https://pypi.org/project/cryptoshield/)
 
 ## Features
 
 - **🍯 Honeypot Detection** — Can you sell? Hidden taxes? Mint function? Check before you buy.
 - **📋 Approval Scanner** — Find all token approvals on your wallet. Flag dangerous unlimited approvals.
 - **🔴 Rugpull Scorer** — Analyze contracts for common rug patterns. Score 0-100.
-- **🎣 Phishing Checker** — Detect scam URLs. Typosquatting, fake airdrops, wallet drainers.
+- **🎣 Phishing Checker** — 60+ known scam domains. Typosquatting, fake airdrops, wallet drainers.
+- **☀️ Solana Support** — Check SPL tokens, freeze/mint authority, Jupiter listing status.
 - **📦 Batch Mode** — Check 100+ tokens/wallets from a file.
 
 ## Install
@@ -29,11 +31,16 @@ pip install -e .
 
 ## Usage
 
-### Full security report
+### Full security report (EVM)
 ```bash
-cryptoshield check 0x1234...abcd
-cryptoshield check 0x1234...abcd --chain bsc
-cryptoshield check 0x1234...abcd --quick  # honeypot only
+cryptoshield check 0xdAC17F958D2ee523a2206206994597C13D831ec7
+cryptoshield check 0xToken --chain bsc
+cryptoshield check 0xToken --quick  # honeypot only
+```
+
+### Solana token check
+```bash
+cryptoshield check EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v --chain solana
 ```
 
 ### Scan wallet approvals
@@ -42,21 +49,22 @@ cryptoshield approvals 0xYourWallet
 cryptoshield approvals 0xYourWallet --chain polygon
 ```
 
-### Rugpull analysis
-```bash
-cryptoshield rugpull 0x1234...abcd
-```
-
 ### Check phishing URL
 ```bash
 cryptoshield check-url uniswap-airdrop.com
 cryptoshield check-url https://app.uniswap.org
+cryptoshield check-url metamask-sync.xyz
+```
+
+### Solana wallet scan
+```bash
+cryptoshield solana YourSolanaWalletAddress
 ```
 
 ### Batch check
 ```bash
-# File with one address per line
 cryptoshield batch tokens.txt --mode honeypot
+cryptoshield batch tokens.txt --mode honeypot --chain solana
 cryptoshield batch wallets.txt --mode approvals --chain bsc
 ```
 
@@ -66,35 +74,26 @@ cryptoshield batch wallets.txt --mode approvals --chain bsc
 🛡 CRYPTO SHIELD REPORT
 ━━━━━━━━━━━━━━━━━━━━━━━
 
-🍯 HONEYPOT CHECK — SafeToken (SAFE)
+🍯 HONEYPOT CHECK — Tether USD (USDT)
   ✅ Can sell: YES
   ✅ Tax: 0% buy / 0% sell
-  ✅ Owner can mint: NO
+  ❌ Owner can mint: YES — infinite supply risk
+  ❌ Owner can change balances: YES
   ✅ Contract: Verified
-  ℹ️  Holders: 12,847
-  ✅ Risk Score: 5/100 — LOW RISK
-
-📋 APPROVAL AUDIT — 0x47ac...8188
-  ❌ USDT → UNLIMITED to 0xUnkn...abcd
-         ⚡ RECOMMEND: revoke immediately
-  ⚠️  WETH → unlimited to Uniswap V2 Router
-         Known protocol — consider reducing allowance
-  ✅ DAI → 500.00 to Uniswap V3 Router
-  ℹ️  Total approvals: 3
-  ❌ 1 HIGH RISK — revoke now!
-
-🔴 RUGPULL SCORE — 0x1234...abcd
-  ✅ Contract Code: 12,847 bytes deployed
-  ❌ Ownership: Owner: 0xDang...er0us
-  ❌ Source Code: Not verified
-  ❌ Honeypot: Token is a honeypot
-  ❌ Risk Score: 75/100 — HIGH RISK
+  ℹ️  Holders: 14,585,422
+  ⚠️  Risk Score: 30/100 — MEDIUM RISK
 
 🎣 PHISHING CHECK — uniswap-airdrop.com
-  ℹ️  Unknown domain: uniswap-airdrop.com
-  ❌ Possible typosquat of uniswap.org (similarity: 85%)
-  ⚠️  Suspicious pattern: 'airdrop' in URL
-  ❌ Risk Score: 55/100 — HIGH RISK — likely phishing
+  🚨 KNOWN SCAM DOMAIN — DO NOT VISIT
+  ❌ KNOWN SCAM DOMAIN — uniswap-airdrop.com is in scam database
+
+☀️ SOLANA TOKEN CHECK — SafeToken (SAFE)
+  ✅ Listed on Jupiter
+  ✅ On Jupiter Strict List (vetted)
+  ✅ Freeze Authority: None
+  ✅ Mint Authority: None (fixed supply)
+  ✅ Holders: 5,432
+  ✅ Risk Score: 0/100 — LOW RISK
 ```
 
 ## Supported Chains
@@ -109,19 +108,23 @@ cryptoshield batch wallets.txt --mode approvals --chain bsc
 | Base | ✅ | ✅ | ✅ |
 | Avalanche | ✅ | ✅ | ✅ |
 | Fantom | ✅ | ✅ | ✅ |
+| Solana | ✅ | — | ✅ |
 
 ## Data Sources
 
 - **GoPlus Security API** — Honeypot detection, token security analysis (free, no key)
+- **Jupiter API** — Solana token data, strict list
+- **Birdeye API** — Solana holder count, volume
 - **On-chain data** — Approval events, contract code, ownership (direct RPC)
 - **Heuristics** — URL pattern matching, domain analysis, typosquatting detection
+- **Community scam database** — 60+ known phishing domains
 
 ## Contributing
 
 PRs welcome! Especially:
 
-- More scam patterns / phishing databases
-- Solana support
+- More scam domains / phishing patterns
+- More chain support (TON, Sui, Aptos)
 - Better rugpull heuristics
 - UI improvements
 
